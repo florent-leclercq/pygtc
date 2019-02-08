@@ -103,8 +103,12 @@ def plotGTC(chains, **kwargs):
         Size of the Gaussian smoothing kernel in bins. Default is 1. Set to 0
         for no smoothing.
 
-    filledPlots : bool
-        Whether you want the 2d contours and the 1d histograms to be filled.
+    filledPlots2d : bool
+        Whether you want the 2d contours to be filled
+        Default is ``True``.
+
+    filledPlots1d : bool
+        Whether you want the 1d histograms to be filled
         Default is ``True``.
 
     plotDensity : bool
@@ -448,7 +452,8 @@ def plotGTC(chains, **kwargs):
             %(100.*float(smoothingKernel)/float(nBins)), UserWarning)
 
     # Filled contours and histograms
-    filledPlots = kwargs.pop('filledPlots', True)
+    filledPlots2d = kwargs.pop('filledPlots2d', True)
+    filledPlots1d = kwargs.pop('filledPlots1d', True)
 
     # Filled contours and histograms
     plotDensity = kwargs.pop('plotDensity', False)
@@ -585,7 +590,7 @@ def plotGTC(chains, **kwargs):
                         truthsForPlot2D = [[truths[k,i], truths[k,j]] for k in range(len(truths))]
                     # Plot!
                     ax = __plot2d(ax, nChains, chainsForPlot2D, weights, nBins,
-                                smoothingKernel, filledPlots, colors, nContourLevels,
+                                smoothingKernel, filledPlots2d, colors, nContourLevels,
                                 confLevels, truthsForPlot2D, truthColors, truthLineStyles,
                                 plotDensity, myColorMap)
 
@@ -759,7 +764,7 @@ def plotGTC(chains, **kwargs):
                     prior1d = priors[i]
             # Plot!
             ax = __plot1d(ax, nChains, chainsForPlot1D, weights, nBins,
-                        smoothingKernel, filledPlots, colors, truthsForPlot1D,
+                        smoothingKernel, filledPlots1d, colors, truthsForPlot1D,
                         truthColors, truthLineStyles, prior1d, priorColor)
 
 
@@ -1050,12 +1055,27 @@ def __plot1d(ax, nChains, chains1d, weights, nBins, smoothingKernel,
             else:
                 # create 1d histogram
                 hist1d, edges = np.histogram(chains1d[k], weights=weights[k],
-                    normed=True, bins=nBins)
+                    density=True, bins=nBins)
+                
                 # Bin center between histogram edges
                 centers = (edges[1:]+edges[:-1])/2
+
                 # Filter data
-                plotData.append( scipy.ndimage.gaussian_filter1d((centers,hist1d),
-                    sigma=smoothingKernel) )
+                pdf = np.array((centers, hist1d))
+                pdf = scipy.ndimage.gaussian_filter1d(pdf, sigma=smoothingKernel)
+                
+                # Clip the pdf to zero out of the bins
+                centers, hist = pdf[0], pdf[1]
+                centers = np.insert(centers, 0, centers[0]-(centers[1]-centers[0]))
+                hist = np.insert(hist, 0, 0.)
+                centers = np.insert(centers, len(centers), centers[len(centers)-1]-(centers[len(centers)-2]-centers[len(centers)-1]))
+                hist = np.insert(hist, len(hist), 0.)
+                
+                # Normalize all the pdfs to the same height
+                hist /= hist.max()
+                
+                pdf = np.array((centers, hist))
+                plotData.append(pdf)
                 if filledPlots:
                     # Filled smooth histogram
                     ax.fill_between(plotData[-1][0], plotData[-1][1], 0,
@@ -1073,14 +1093,14 @@ def __plot1d(ax, nChains, chains1d, weights, nBins, smoothingKernel,
                 # Is there a chain to plot?
                 if not np.isnan(chains1d[k]).all():
                     # Filled stepfilled histograms
-                    ax.hist(chains1d[k], weights=weights[k], normed=True,
+                    ax.hist(chains1d[k], weights=weights[k], density=True,
                         bins=nBins, histtype='stepfilled', edgecolor='None',
                         color=colors[k][1])
         for k in reversed(range(nChains)):
             # Is there a chain to plot?
             if not np.isnan(chains1d[k]).all():
                 # Step curves for hidden histogram(s)
-                ax.hist(chains1d[k], weights=weights[k], normed=True,
+                ax.hist(chains1d[k], weights=weights[k], density=True,
                     bins=nBins, histtype='step', color=colors[k][1])
 
     ##### Truth line
